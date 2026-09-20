@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>جلب بواسطة socialapis.io API</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{if(localStorage.getItem('scNlmTheme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">scrapperNlm</span>
+  <a class="navlink" href="/">الرئيسية</a>
+  <a class="navlink active" href="/scrape">جلب بواسطة socialapis.io API</a>
+  <a class="navlink" href="/fbread">جلب بيانات فيسبوك</a>
+  <a class="navlink" href="/upload">رفع الملفات</a>
+  <a class="navlink" href="/chat">المحادثة</a>
+  <span class="spacer"></span>
+  <button id="themeBtn" class="btn ghost small" onclick="window.scTheme && scTheme.toggle()" title="Toggle theme">🌙</button>
+  <span id="tokenBadge" class="badge amber">token: فحص…</span>
+</div>
+
+<div class="container">
+  <h1> جلب بيانات مجموعة فيسبوك</h1>
+  <p class="desc">عبر socialapis.io: جلب عدد محدد من المنشورات والتعليقات من مجموعة فيسبوك  .
+    </p>
+
+  <div class="card">
+    <h2>أدخل مجموعة جديدة</h2>
+    <div class="grid2">
+      <div>
+        <label>اسم المجموعة</label>
+        <input type="text" id="gName" placeholder="مثال: مجموعة الفقه">
+      </div>
+      <div>
+        <label>رابط المجموعة</label>
+        <input type="url" id="gLink" dir="ltr" placeholder="https://www.facebook.com/groups/1234567890">
+      </div>
+    </div>
+    <div class="flex mt">
+      <button class="btn secondary" id="addGroupBtn">+ إضافة المجموعة</button>
+      <span class="muted small" id="groupMsg"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>المجموعات المحفوظة <button class="btn ghost small" id="refreshGroups" title="تحديث">↻</button></h2>
+    <div id="groupList" class="list"></div>
+  </div>
+
+  <div class="card">
+    <h2>المعاملات</h2>
+    <label>أو رابط مجموعة فيسبوك مباشرةً (سيُستخدم إن لم تُحدَّد أي مجموعة)</label>
+    <input type="url" id="groupUrl" dir="ltr" placeholder="https://www.facebook.com/groups/1234567890"
+           value="https://www.facebook.com/groups/336598701666557">
+    <div class="grid2">
+      <div>
+        <label>تاريخ البداية (اختياري)</label>
+        <input type="date" id="dateFrom">
+      </div>
+      <div>
+        <label>تاريخ النهاية (اختياري)</label>
+        <input type="date" id="dateTo">
+      </div>
+      <div>
+        <label>عدد المنشورات (الحد الأقصى)</label>
+        <input type="number" id="postLimit" value="2" min="1" max="50">
+      </div>
+      <div>
+        <label>عدد التعليقات لكل منشور</label>
+        <input type="number" id="commentsPerPost" value="3" min="0" max="100">
+      </div>
+    </div>
+    <div class="flex mt">
+      <label class="flex" style="margin:0;align-items:center;gap:6px;font-weight:500;color:var(--text)">
+        <input type="checkbox" id="includeReplies" style="width:auto"> جلب الردود على التعليقات أيضًا (أبطأ)
+      </label>
+      <button class="btn" id="fetchBtn">▶ جلب</button>
+    </div>
+    <div class="mt" id="progressWrap" style="display:none">
+      <progress id="progress" value="0"></progress>
+      <p class="small muted" id="progressText">جارٍ الجلب…</p>
+    </div>
+    <div id="alert"></div>
+  </div>
+
+  <div class="card">
+    <h2>النتيجة <span id="stats" class="badge blu"></span></h2>
+    <button class="btn secondary small mb" id="refreshData">↻ عرض الملفات المحفوظة</button>
+    <div id="fileList" class="list"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let lastResult = null;
+
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  return await r.json().catch(() => ({}));
+}
+
+function showAlert(type, text) {
+  $('alert').innerHTML = type ? '<div class="notice ' + type + '">' + text + '</div>' : '';
+}
+
+async function loadToken() {
+  const c = await getJSON('/api/fb/config');
+  const b = $('tokenBadge');
+  if (c.has_token) { b.textContent = 'token OK · ' + c.token_masked; b.className = 'badge green'; }
+  else { b.textContent = 'لا يوجد توكن'; b.className = 'badge red'; }
+}
+
+async function listFiles() {
+  const d = await getJSON('/api/fb/data');
+  const box = $('fileList');
+  box.innerHTML = '';
+  if (!d.files || !d.files.length) { box.innerHTML = '<p class="muted small">لم يتم جلب بيانات بعد.</p>'; return; }
+  for (const f of d.files) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    const stem = f.name.replace(/\.json$/i, '');
+    item.innerHTML = '<div class="row"><span class="title mono">' + f.name + '</span>' +
+      '<span class="muted small">' + f.size + ' B · ' + new Date(f.modified).toLocaleString('ar') + '</span>' +
+      '<button class="btn small secondary" data-view="' + stem + '">عرض</button></div>';
+    box.appendChild(item);
+  }
+  box.querySelectorAll('[data-view]').forEach(b => b.onclick = () => openReport(b.dataset.view));
+}
+
+async function loadGroups() {
+  const d = await getJSON('/api/fb/groups');
+  const box = $('groupList');
+  box.innerHTML = '';
+  if (!d.groups || !d.groups.length) { box.innerHTML = '<p class="muted small">لا توجد مجموعات محفوظة بعد.</p>'; return; }
+  for (const g of d.groups) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = '<div class="row">' +
+      '<label class="flex" style="margin:0;align-items:center;gap:8px;flex:1;cursor:pointer">' +
+        '<input type="checkbox" class="gchk" data-gid="' + escapeHtml(g.id || '') + '" style="width:auto">' +
+        '<span class="title" style="font-weight:600">' + escapeHtml(g.name || '') + '</span>' +
+        '<span class="muted small mono" dir="ltr">' + escapeHtml(g.link || '') + '</span>' +
+      '</label>' +
+      '<button class="btn small danger-ghost" data-del="' + escapeHtml(g.id || '') + '">حذف</button></div>';
+    box.appendChild(item);
+  }
+  box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteGroup(b.dataset.del));
+}
+
+async function deleteGroup(gid) {
+  if (!confirm('حذف هذه المجموعة؟')) return;
+  await fetch('/api/fb/groups/' + encodeURIComponent(gid), { method: 'DELETE' });
+  loadGroups();
+}
+
+function selectedGroups() {
+  return [...document.querySelectorAll('.gchk:checked')].map(c => c.closest('label').querySelector('.mono').textContent.trim());
+}
+
+async function addGroup(e) {
+  e.preventDefault();
+  $('groupMsg').textContent = '';
+  const name = $('gName').value.trim();
+  const link = $('gLink').value.trim();
+  if (!name || !link) { $('groupMsg').textContent = 'الاسم والرابط مطلوبان.'; return; }
+  const r = await fetch('/api/fb/groups', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, link }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) { $('gName').value = ''; $('gLink').value = ''; $('groupMsg').className = 'muted small ok'; $('groupMsg').textContent = ' '; loadGroups(); }
+  else { $('groupMsg').className = 'muted small err'; $('groupMsg').textContent = d.error || ('HTTP ' + r.status); }
+}
+
+function openReport(stem) {
+  window.open('/fb/reports/' + encodeURIComponent(stem) + '/view', '_blank');
+}
+
+async function fetchData() {
+  const btn = $('fetchBtn');
+  btn.disabled = true;
+  showAlert('', '');
+  const selected = selectedGroups();
+  const custom = $('groupUrl').value.trim();
+  const group_urls = selected.length ? selected : (custom ? [custom] : []);
+  const payload = {
+    group_urls,
+    date_from: $('dateFrom').value,
+    date_to: $('dateTo').value,
+    post_limit: parseInt($('postLimit').value) || 2,
+    comments_per_post: parseInt($('commentsPerPost').value) || 3,
+    include_replies: $('includeReplies').checked,
+  };
+  if (!group_urls.length) { showAlert('err', 'اختر مجموعة أو أدخل رابطًا.'); btn.disabled = false; return; }
+
+  $('progressWrap').style.display = 'block';
+  $('progress').value = 0;
+  $('progressText').textContent = 'جارٍ إرسال الطلب…';
+
+  const timer = setInterval(() => {
+    const v = Math.min(90, parseFloat($('progress').value) + 4);
+    $('progress').value = v;
+    $('progressText').textContent = 'جارٍ الجلب (عادة يستغرق 10-60 ثانية حسب عدد التعليقات)…';
+  }, 1200);
+
+  const started = Date.now();
+  try {
+    const r = await fetch('/api/fb/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    clearInterval(timer);
+    $('progress').value = 100;
+    if (!r.ok) {
+      $('progressText').textContent = 'خطأ';
+      showAlert('err', escapeHtml(d.error || ('HTTP ' + r.status)));
+      return;
+    }
+    lastResult = d;
+    $('progressText').textContent = 'اكتمل · ' + ((Date.now() - started) / 1000).toFixed(1) + ' ثانية';
+    if (d.results && d.results.length) {
+      let totalPosts = 0, totalComments = 0;
+      for (const res of d.results) {
+        totalPosts += res.posts || 0;
+        totalComments += (res.stats && res.stats.comments) || 0;
+      }
+      $('stats').textContent = totalPosts + ' منشور · ' + totalComments + ' تعليق';
+      const lines = d.results.map(res =>
+        '· <b>' + escapeHtml(res.rid) + '</b>: ' + (res.posts || 0) + ' منشور' +
+        (res.partial ? ' <span class="badge amber">جزئي</span>' : '') +
+        (res.error ? ' <span class="badge red">' + escapeHtml(res.error) + '</span>' : '')
+      ).join('<br>');
+      showAlert('ok', 'تم الحفظ:<br>' + lines);
+    } else if (d.stats) {
+      $('stats').textContent = d.stats.posts + ' منشور · ' + d.stats.comments + ' تعليق';
+      showAlert('ok', 'تم الحفظ: <b>' + escapeHtml(d.file || '') + '</b>');
+    }
+    listFiles();
+    loadGroups();
+  } catch (e) {
+    clearInterval(timer);
+    $('progressText').textContent = 'خطأ اتصال';
+    showAlert('err', escapeHtml(String(e)));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+$('fetchBtn').onclick = fetchData;
+$('refreshData').onclick = listFiles;
+$('addGroupBtn').onclick = addGroup;
+$('refreshGroups').onclick = loadGroups;
+$('gLink').addEventListener('keydown', e => { if (e.key === 'Enter') addGroup(e); });
+document.getElementById('commentsPerPost').addEventListener('keydown', e => { if (e.key === 'Enter') fetchData(); });
+document.getElementById('postLimit').addEventListener('keydown', e => { if (e.key === 'Enter') fetchData(); });
+if (window.scTheme) scTheme.init();
+loadToken();
+listFiles();
+loadGroups();
+</script>
+</body>
+</html>

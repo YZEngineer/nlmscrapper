@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Secrets
+.env
+facebook_session.json
+
+# App data (created automatically on first run)
+data/
+uploads/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

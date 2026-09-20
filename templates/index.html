@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scrapperNlm</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{if(localStorage.getItem('scNlmTheme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">scrapperNlm</span>
+  <a class="navlink active" href="/">الرئيسية</a>
+  <a class="navlink" href="/scrape">جلب بواسطة socialapis.io API</a>
+  <a class="navlink" href="/fbread">جلب بيانات فيسبوك</a>
+  <a class="navlink" href="/upload">رفع الملفات</a>
+  <a class="navlink" href="/chat">المحادثة</a>
+  <span class="spacer"></span>
+  <button id="themeBtn" class="btn ghost small" onclick="window.scTheme && scTheme.toggle()" title="Toggle theme">🌙</button>
+  <span id="fbBadge" class="badge blu">FB: فحص…</span>
+  <span id="nlmBadge" class="badge amber">NLM: فحص…</span>
+</div>
+
+<div class="container">
+
+
+  <div class="card">
+    <h2>توكن <a href="https://socialapis.io/dashboard" target="_blank" rel="noopener noreferrer">socialapis.io</a></h2>
+    <div class="flex mt">
+      <input type="password" id="tokenInput" placeholder="SOCIALAPIS_TOKEN" style="flex:1" autocomplete="off">
+      <button class="btn" id="saveTokenBtn">حفظ</button>
+    </div>
+    <div id="tokenMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2 class="mt">الحالة</h2>
+    <div class="flex">
+      <span id="fbBadge2" class="badge blu">FB: فحص…</span>
+      <span id="fbLoginBadge2" class="badge amber">Facebook: فحص تسجيل الدخول…</span>
+      <span id="nlmBadge2" class="badge amber">NLM: فحص…</span>
+    </div>
+    <div class="flex mt">
+      <button class="btn secondary small" id="homeFbLoginBtn">تسجيل دخول Facebook</button>
+      <button class="btn secondary small" id="homeNlmLoginBtn">تسجيل دخول NotebookLM</button>
+    </div>
+    <div id="statusMsg" class="notice info mt hide"></div>
+  </div>
+</div>
+
+<script>
+async function getJSON(url, opts) { const r = await fetch(url, opts); return { ok: r.ok, body: await r.json().catch(() => ({})) }; }
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/fb/config');
+    const fb = await r.json();
+    document.getElementById('fbBadge2').textContent = fb.has_token ? 'FB: token OK (' + fb.token_masked + ')' : 'FB: لا يوجد توكن';
+    document.getElementById('fbBadge2').className = 'badge ' + (fb.has_token ? 'green' : 'red');
+  } catch (e) {
+    document.getElementById('fbBadge2').textContent = 'FB: خطأ';
+    document.getElementById('fbBadge2').className = 'badge red';
+  }
+  try {
+    const r = await fetch('/api/fbread/status');
+    const fbSession = await r.json();
+    const loginBadge = document.getElementById('fbLoginBadge2');
+    loginBadge.textContent = fbSession.session_ok
+      ? 'Facebook: تسجيل الدخول صالح'
+      : 'Facebook: يلزم تسجيل الدخول';
+    loginBadge.className = 'badge ' + (fbSession.session_ok ? 'green' : 'red');
+  } catch (e) {
+    document.getElementById('fbLoginBadge2').textContent = 'Facebook: خطأ';
+    document.getElementById('fbLoginBadge2').className = 'badge red';
+  }
+  try {
+    const r = await fetch('/api/nlm/status');
+    const nlm = await r.json();
+    const label = nlm.authenticated ? 'NLM: متصل' : 'NLM: يلزم الدخول';
+    const b22 = document.getElementById('nlmBadge2');
+    b22.textContent = label + (nlm.error ? ' · ' + nlm.error.slice(0, 90) : '');
+    b22.className = 'badge ' + (nlm.authenticated ? 'green' : 'red');
+  } catch (e) {
+    document.getElementById('nlmBadge2').textContent = 'NLM: خطأ';
+    document.getElementById('nlmBadge2').className = 'badge red';
+  }
+}
+
+function showTokenMsg(type, html) {
+  document.getElementById('tokenMsg').innerHTML = type ? '<div class="notice ' + type + '" style="margin-top:10px">' + html + '</div>' : '';
+}
+
+document.getElementById('saveTokenBtn').onclick = async function () {
+  const token = document.getElementById('tokenInput').value.trim();
+  showTokenMsg('', '');
+  if (!token) { showTokenMsg('err', 'أدخل التوكن أولاً'); return; }
+  this.disabled = true;
+  const r = await getJSON('/api/fb/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  this.disabled = false;
+  if (r.ok && r.body.ok) {
+    document.getElementById('tokenInput').value = '';
+    showTokenMsg('ok', 'تم الحفظ: <b>' + r.body.token_masked + '</b>');
+    loadStatus();
+  } else {
+    showTokenMsg('err', r.body.error || 'فشل الحفظ');
+  }
+};
+
+async function startHomepageLogin(url, button, successMessage) {
+  button.disabled = true;
+  const r = await getJSON(url, { method: 'POST' });
+  button.disabled = false;
+  const body = r.body || {};
+  const message = body.error || body.message || (r.ok ? successMessage : 'فشل تسجيل الدخول');
+  document.getElementById('statusMsg').textContent = message;
+  document.getElementById('statusMsg').className = 'notice ' + (r.ok && body.ok !== false ? 'ok' : 'err') + ' mt';
+  if (r.ok) loadStatus();
+}
+
+document.getElementById('homeFbLoginBtn').onclick = function () {
+  startHomepageLogin('/api/fbread/login', this, 'تم بدء تسجيل دخول Facebook');
+};
+
+document.getElementById('homeNlmLoginBtn').onclick = function () {
+  startHomepageLogin('/api/nlm/login', this, 'تم بدء تسجيل دخول NotebookLM');
+};
+
+if (window.scTheme) scTheme.init();
+loadStatus();
+</script>
+</body>
+</html>

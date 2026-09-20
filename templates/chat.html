@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>المحادثة مع NotebookLM</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{if(localStorage.getItem('scNlmTheme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">scrapperNlm</span>
+  <a class="navlink" href="/">الرئيسية</a>
+  <a class="navlink" href="/scrape">جلب بواسطة socialapis.io API</a>
+  <a class="navlink" href="/fbread">جلب بيانات فيسبوك</a>
+  <a class="navlink" href="/upload">رفع الملفات</a>
+  <a class="navlink active" href="/chat">المحادثة</a>
+  <span class="spacer"></span>
+  <button id="themeBtn" class="btn ghost small" onclick="window.scTheme && scTheme.toggle()" title="Toggle theme">🌙</button>
+  <span id="authBadge" class="badge amber">الحالة: فحص…</span>
+</div>
+
+<div class="container">
+  <h1>  المحادثة مع دفتر NotebookLM</h1>
+  <p class="desc">وجّه سؤالًا إلى مصادر الدفتر المحدد. يُحتفظ بسياق المحادثة (الأسئلة المتابِعة تستمر في نفس الجلسة).</p>
+
+  <div class="card" id="authCard">
+    <div class="flex">
+      <p class="small" id="authHint">جارٍ فحص الاتصال…</p>
+      <button class="btn secondary small" id="loginBtn">تسجيل الدخول</button>
+    </div>
+  </div>
+
+  <div class="card" id="chatCard" style="display:none">
+    <div class="flex mb">
+      <select id="nbSelect" style="flex:1"></select>
+      <button class="btn secondary small" id="nbRefresh">↻</button>
+      <button class="btn ghost small" id="newChat">+ محادثة جديدة</button>
+    </div>
+
+    <div class="chatbox" id="chatbox"></div>
+
+    <div class="chatinput">
+      <input type="text" id="qInput" placeholder="اسأل المصادر… (Enter للإرسال)" autocomplete="off">
+      <button class="btn" id="askBtn">إرسال</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let conversationId = null;
+let currentNb = null;
+
+async function getJSON(url, opts) { const r = await fetch(url, opts); return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) }; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderMarkdown(md) {
+  const src = String(md || '');
+  const esc = src
+    .replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    .replace(/```([\w+]*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/^### (.*)$/gm, '<h4>$1</h4>')
+    .replace(/^## (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^- (.*)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/\*([^*]+)\*/g, '<i>$1</i>')
+    .replace(/\n\n/g, '<br><br>');
+  return esc;
+}
+
+function addMsg(role, html) {
+  const box = $('chatbox');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = html;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function typing() {
+  const box = $('chatbox');
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  div.id = 'typing';
+  div.innerHTML = '<span class="muted">…يراجع المصادر</span>';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function loadStatus() {
+  const r = await getJSON('/api/nlm/status');
+  const ok = r.ok && r.body.authenticated;
+  const b = $('authBadge');
+  b.textContent = ok ? 'متصل' : 'يلزم الدخول';
+  b.className = 'badge ' + (ok ? 'green' : 'red');
+  $('authHint').textContent = ok ? 'متصل.' : (r.body.error || 'يلزم تسجيل الدخول.');
+  $('chatCard').style.display = ok ? 'block' : 'none';
+  if (ok) loadNotebooks();
+}
+
+async function loadNotebooks() {
+  const r = await getJSON('/api/nlm/notebooks');
+  if (!r.ok) return;
+  const sel = $('nbSelect');
+  const prev = currentNb;
+  sel.innerHTML = '';
+  for (const nb of (r.body.notebooks || [])) {
+    const opt = document.createElement('option');
+    opt.value = nb.id;
+    opt.textContent = nb.title + ' (' + nb.sources_count + ' مصدر)';
+    sel.appendChild(opt);
+  }
+  if (!sel.options.length) sel.innerHTML = '<option value="">لا توجد دفاتر (أنشئها من  )</option>';
+  else if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  currentNb = sel.value;
+  keepConv();
+}
+
+function keepConv() {
+  const box = $('chatbox');
+  if (currentNb && (box.children.length === 0 || $('typing'))) {
+    addMsg('bot', 'مرحبًا! يمكنك طرح أسئلة على مصادر <b>' + escapeHtml(($('nbSelect').selectedOptions[0]?.textContent || '').split(' (')[0]) + '</b>.');
+  }
+}
+
+async function ask(payload) {
+  typing();
+  const started = Date.now();
+  const r = await fetch('/api/chat/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const d = await r.json().catch(() => ({}));
+  const typingEl = $('typing');
+  if (typingEl) typingEl.remove();
+  if (!r.ok || !d.ok) { addMsg('roboterr', '<span class="muted">' + escapeHtml(d.error || d.message || ('HTTP ' + r.status)) + '</span>'); return; }
+  conversationId = d.conversation_id || conversationId;
+  let html = renderMarkdown(d.answer);
+  const firstTitle = (d.references && d.references[0] && d.references[0].title) || '';
+  html += '<div class="refs"><span class="small muted">المصدر: ' + escapeHtml(firstTitle) + ' · ' + ((Date.now()-started)/1000).toFixed(1) + ' ثانية</span>';
+  const refs = (d.references || []).slice(0, 6);
+  for (const ref of refs) {
+    const title = (ref && typeof ref === 'object') ? (ref.title || ref.source_id || '') : String(ref);
+    html += '<div class="ref">📄 ' + escapeHtml(title) + '</div>';
+  }
+  html += '</div>';
+  addMsg('bot', html);
+}
+
+$('askBtn').onclick = () => {
+  const q = $('qInput').value.trim();
+  if (!q || !currentNb) return;
+  addMsg('user', escapeHtml(q));
+  $('qInput').value = '';
+  ask({ nb_id: currentNb, question: q, conversation_id: conversationId });
+};
+
+$('qInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('askBtn').click(); });
+
+$('newChat').onclick = () => { conversationId = null; $('chatbox').innerHTML = ''; keepConv(); };
+$('nbRefresh').onclick = loadNotebooks;
+$('nbSelect').onchange = () => { currentNb = $('nbSelect').value; conversationId = null; $('chatbox').innerHTML = ''; keepConv(); };
+$('loginBtn').onclick = async () => {
+  $('loginBtn').disabled = true;
+  const r = await getJSON('/api/nlm/login', { method: 'POST' });
+  $('loginBtn').disabled = false;
+  if (r.ok && r.body.ok) {
+    $('authHint').textContent = r.body.message || 'تم فتح نافذة تسجيل الدخول.';
+  } else {
+    $('authHint').textContent = r.body.error || r.body.message || 'فشل تسجيل الدخول';
+  }
+  setTimeout(loadStatus, 4000);
+};
+
+if (window.scTheme) scTheme.init();
+loadStatus();
+</script>
+</body>
+</html>
