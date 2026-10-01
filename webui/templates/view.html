@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ filename }} - Raw Data</title>
+  <style>
+    :root { --bg:#f4f6f8; --card:#fff; --line:#dfe3e8; --txt:#17202a; --muted:#667085; --acc:#2563eb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.55 "Segoe UI",Arial,sans-serif; }
+    header { background:#172554; color:#fff; padding:20px; }
+    header h1 { margin:0 0 4px; font-size:20px; word-break:break-all; }
+    header p { margin:0; color:#c7d2fe; }
+    main { max-width:1100px; margin:20px auto; padding:0 16px; }
+    .toolbar { margin-bottom:16px; }
+    a { color:var(--acc); text-decoration:none; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+    .meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:var(--muted); }
+    .post { border-top:1px solid var(--line); padding:14px 0; }
+    .post:first-child { border-top:0; padding-top:0; }
+    .post h2 { font-size:16px; margin:0 0 6px; }
+    .url { word-break:break-all; }
+    .block { white-space:pre-wrap; word-break:break-word; background:#f8fafc; border-left:4px solid var(--acc); padding:10px; margin:8px 0; }
+    .post-body { white-space:pre-wrap; margin:10px 0; }
+    .comment { border-left:3px solid #cbd5e1; margin:12px 0; padding:8px 12px; }
+    .comment-author { font-weight:700; }
+    .comment-text { white-space:pre-wrap; margin-top:4px; }
+    .replies { margin-left:20px; }
+    pre { white-space:pre-wrap; word-break:break-word; overflow:auto; background:#0b1220; color:#dbeafe; border-radius:8px; padding:14px; max-height:600px; direction:ltr; text-align:left; }
+    .badge { display:inline-block; padding:2px 9px; border-radius:99px; background:#e0e7ff; color:#3730a3; font-size:12px; }
+    .warning { background:#fff7ed; color:#9a3412; padding:10px; border-radius:8px; }
+    .tab-wrap { display:flex; gap:8px; margin:16px 0; }
+    .tab-btn { background:#e2e8f0; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; }
+    .tab-btn.active { background:#172554; color:#fff; border-color:#172554; }
+    .panel { display:none; }
+    .panel.active { display:block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{ filename }}</h1>
+    <p>Scrape result · readable and raw data views</p>
+  </header>
+  <main>
+    {% macro render_comment(item) %}
+    <div class="comment">
+      <div class="comment-author">{{ item.get('author', '') }}</div>
+      <div class="comment-text">{{ item.get('text', '') }}</div>
+      {% for reply in (item.get('replies') or []) %}
+        {{ render_comment(reply) }}
+      {% endfor %}
+    </div>
+    {% endmacro %}
+    <div class="toolbar"><a href="/">← Back to test panel</a></div>
+    <div class="tab-wrap">
+      <button class="tab-btn active" data-target="readable">Readable content</button>
+      <button class="tab-btn" data-target="raw">Raw data</button>
+    </div>
+    <section id="readable" class="card panel active">
+      <div class="meta">
+        <span>Posts: <b>{{ posts|length }}</b></span>
+        {% if data.get('partial') %}<span class="badge">Partial</span>{% endif %}
+        {% if data.get('stopped') %}<span class="badge">Stopped</span>{% endif %}
+        {% if data.get('errors') %}<span class="badge">Errors: {{ data.get('errors')|length }}</span>{% endif %}
+      </div>
+      {% if data.get('error') %}<p class="warning">{{ data.get('error') }}</p>{% endif %}
+      {% if data.get('urls') and not posts %}
+      <div class="warning">This file contains a URL list. The links below are the discovered post URLs.</div>
+      {% endif %}
+      {% for post in posts %}
+      <article class="post">
+        <h2>Post {{ loop.index }}</h2>
+        {% if post.get('post_url') or post.get('url') %}
+        <div class="url"><a href="{{ post.get('post_url') or post.get('url') }}" target="_blank" rel="noreferrer">{{ post.get('post_url') or post.get('url') }}</a></div>
+        {% endif %}
+        {% if post.get('post') %}
+        <div class="comment-author">{{ post.get('post', {}).get('author', '') }}</div>
+        <div class="post-body">{{ post.get('post', {}).get('text', '') }}</div>
+        {% for comment in (post.get('comments') or []) %}
+          {{ render_comment(comment) }}
+        {% endfor %}
+        {% else %}
+        {% for block in (post.get('blocks') or []) %}
+        <div class="block">{{ block }}</div>
+        {% endfor %}
+        {% endif %}
+      </article>
+      {% else %}
+      {% if data.get('urls') %}
+      <ul>
+        {% for url in data.get('urls') %}
+        <li><a href="{{ url }}" target="_blank" rel="noreferrer">{{ url }}</a></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p>No post data to display.</p>{% endif %}
+      {% endfor %}
+    </section>
+
+    <section id="raw" class="card panel" style="display:none;">
+      <h2>Raw data</h2>
+      <pre>{{ raw_json }}</pre>
+    </section>
+  </main>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      const buttons = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.panel');
+      buttons.forEach((btn) => {
+        btn.addEventListener('click', function () {
+          const target = this.dataset.target;
+          buttons.forEach((b) => b.classList.toggle('active', b === btn));
+          panels.forEach((p) => {
+            const active = p.id === target;
+            p.classList.toggle('active', active);
+            p.style.display = active ? 'block' : 'none';
+          });
+        });
+      });
+    });
+  </script>
+</body>
+</html>

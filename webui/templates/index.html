@@ -1,0 +1,112 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facebook Group Scraper</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#262b36; --txt:#e6e8ee; --muted:#8b93a5; --acc:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Segoe UI, Tahoma, Arial, sans-serif; background:var(--bg); color:var(--txt); line-height:1.6; }
+  .wrap { max-width:1100px; margin:0 auto; padding:20px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .row { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;} }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  select, input[type=text], input[type=number] { width:100%; background:#10131a; border:1px solid var(--line); color:var(--txt); padding:9px 11px; border-radius:8px; font-size:14px; margin-bottom:10px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:8px 0 4px; }
+  button { border:0; border-radius:8px; padding:10px 16px; font-size:14px; cursor:pointer; font-weight:600; }
+  .primary { background:var(--acc); color:#fff; width:100%; }
+  .primary:disabled { opacity:.5; cursor:not-allowed; }
+  .ghost { background:transparent; border:1px solid var(--line); color:var(--txt); }
+  .limit-toggle { display:block; width:100%; margin:8px 0; text-align:left; }
+  .limit-toggle.active { background:#123524; border-color:#22c55e; color:#22c55e; }
+  .limit-toggle.inactive { background:#3a1d1d; border-color:#ef4444; color:#ef4444; }
+  .badge { display:inline-block; padding:4px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .b-ok { background:#123524; color:var(--ok); }
+  .b-bad { background:#3a1d1d; color:var(--err); }
+  .tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .tabs button { background:#1a1f2b; border:1px solid var(--line); }
+  .tabs button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  textarea { width:100%; min-height:180px; resize:vertical; background:#10131a; border:1px solid var(--line); color:var(--txt); padding:9px 11px; border-radius:8px; font:14px Consolas, monospace; margin-bottom:10px; }
+  .hint { color:var(--muted); font-size:12px; margin:-4px 0 10px; }
+  .center { text-align:center; color:var(--muted); font-size:13px; padding:14px; }
+  #log { background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; height:280px; overflow:auto; font-family:Consolas, monospace; font-size:12px; line-height:1.6; white-space:pre-wrap; direction:ltr; text-align:left; }
+  #result { background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; height:280px; overflow:auto; font-family:Consolas, monospace; font-size:12px; white-space:pre-wrap; direction:ltr; text-align:left; }
+  .files { list-style:none; margin:0; padding:0; }
+  .files li { display:flex; justify-content:space-between; padding:7px 4px; border-bottom:1px solid var(--line); font-size:13px; }
+  .files a { color:var(--acc); text-decoration:none; }
+  .files .size { color:var(--muted); }
+  .file-actions { display:flex; gap:6px; align-items:center; }
+  .file-actions button { padding:5px 8px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Facebook Group Scraper</h1>
+  <div class="row">
+    <span id="sessionBadge" class="badge b-bad">Checking session...</span>
+    <div>
+      <button class="ghost" id="clearJobBtn" style="margin-right:6px;">CLEAR JOB</button>
+      <button class="ghost" id="clearSessionBtn">DELETE SESSION</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="tabs">
+        <button id="tabGroup" class="on" type="button">Get URLs</button>
+        <button id="tabComments" type="button">Get Comments</button>
+      </div>
+
+      <div id="formGroup">
+        <label>Group ID or URL</label>
+        <input type="text" id="groupInput" placeholder="Group ID or https://www.facebook.com/groups/.../">
+        <button id="postLimitToggle" class="limit-toggle active" type="button" aria-pressed="true">Post limit: ACTIVE</button>
+        <input type="number" id="postLimit" value="10" min="1" max="1000">
+      </div>
+
+      <div id="formComments" style="display:none;">
+        <label>Post URL (single URL)</label>
+        <input type="text" id="commentsUrl" placeholder="https://www.facebook.com/groups/.../posts/.../">
+        <label>Or load a URL list from a JSON file</label>
+        <select id="commentsSourceFile"><option value="">Use a single URL</option></select>
+      </div>
+
+      <label>Output filename (optional)</label>
+      <input type="text" id="outputName" placeholder="name_urls.json">
+      <button id="runBtn" class="primary">START</button>
+    </div>
+
+    <div class="card">
+      <h2>Current Job</h2>
+      <div id="jobInfo" class="center">No job started yet.</div>
+      <button id="stopBtn" class="ghost" style="display:none;width:100%;margin-top:10px;">STOP AND SAVE</button>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <div class="card">
+      <h2>Live Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:16px;">
+    <div class="card">
+      <h2>Result</h2>
+      <div id="result">The result will appear here when the job finishes.</div>
+    </div>
+    <div class="card">
+      <h2>Files (data/)</h2>
+      <ul class="files" id="fileList"></ul>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
