@@ -8,7 +8,7 @@ $lnkPath = Join-Path $desktop 'scrapeLm.exe.lnk'
 
 $ws = New-Object -ComObject WScript.Shell
 $lnk = $ws.CreateShortcut($lnkPath)
-$lnk.TargetPath = $ProjectDir + 'start.bat'
+$lnk.TargetPath = $ProjectDir + 'run.bat'
 $lnk.WorkingDirectory = $ProjectDir
 $lnk.IconLocation = $ProjectDir + 'ScrapLm.ico,0'
 $lnk.WindowStyle = 7
