@@ -163,8 +163,8 @@ def run():
             params["limit"] = int(params.get("limit") or 10) if limit_enabled else None
         except (TypeError, ValueError):
             return jsonify({"error": "Post limit must be a number."}), 400
-        if limit_enabled and (params["limit"] < 1 or params["limit"] > 10000):
-            return jsonify({"error": "Post limit must be between 1 and 10000."}), 400
+        if limit_enabled and (params["limit"] < 1 or params["limit"] > 100000):
+            return jsonify({"error": "Post limit must be between 1 and 100000."}), 400
     else:
         url = str(params.get("post_url") or "").strip()
         urls = params.get("urls") if isinstance(params.get("urls"), list) else []
