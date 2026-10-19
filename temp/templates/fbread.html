@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>جلب بيانات فيسبوك — جلب بالمتصفح</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{if(localStorage.getItem('scNlmTheme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script src="/static/theme.js"></script>
+<style>
+  .tabs { display:flex; gap:10px; margin-bottom:16px; }
+  .tabs button { flex:1; min-height:46px; padding:12px 14px; font-size:15px; font-weight:600; background:#1a1f2b; border:1px solid var(--line); }
+  .tabs button.on { background:var(--accent, #3b82f6); border-color:var(--accent, #3b82f6); color:#fff; }
+  .param { display:inline-flex; align-items:center; gap:6px; margin:0; flex:1 1 0; min-width:150px; }
+  .param .lbl { width:auto; font-size:13px; color:var(--muted); flex:none; min-width:64px; }
+  .param input[type=number] { margin-bottom:0; flex:1 1 60px; min-width:48px; padding:6px 8px; }
+  .tgl { flex:none; width:74px; padding:6px 0; font-size:12px; border-radius:8px; background:#272c38; color:var(--muted); border:1px solid var(--line); cursor:pointer; font-weight:600; }
+  .caps { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:4px; }
+  .grouprow { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .actrow { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0; flex-wrap:wrap; }
+  .namerow { display:flex; align-items:center; gap:8px; }
+  .cmt { font-size:13px; color:var(--text); white-space:nowrap; }
+  .tgl.on { background:#123524; color:#22c55e; border-color:#22c55e; }
+  .tgl.off { opacity:.75; }
+  .gate { color:#f59e0b; font-size:13px; margin:4px 0 10px; }
+  .hint { font-size:12px; color:var(--muted); margin:2px 0 8px; min-height:16px; }
+</style>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">scrapperNlm</span>
+  <a class="navlink" href="/">الرئيسية</a>
+  <a class="navlink" href="/scrape">جلب بواسطة socialapis.io API</a>
+  <a class="navlink active" href="/fbread">جلب بيانات فيسبوك</a>
+  <a class="navlink" href="/upload">رفع الملفات</a>
+  <a class="navlink" href="/chat">المحادثة</a>
+  <span class="spacer"></span>
+  <button id="themeBtn" class="btn ghost small" onclick="window.scTheme && scTheme.toggle()" title="Toggle theme">🌙</button>
+  <span id="sessBadge" class="badge amber">FB: فحص…</span>
+</div>
+
+<div class="container">
+  <div class="card">
+    <h2>الجلسة</h2>
+    <div class="flex">
+      <button class="btn secondary" id="loginBtn">تسجيل الدخول إلى فيسبوك</button>
+      <button class="btn danger-ghost" id="delSessBtn">حذف الجلسة</button>
+      <span class="muted small" id="sessMsg"></span>
+    </div>
+  </div>
+
+  <div class="grid2" style="align-items:start">
+  <div class="card">
+    <h2>مهمة جديدة</h2>
+    <div class="tabs">
+      <button id="tabLinks" class="on">روابط المجموعة</button>
+      <button id="tabPost">جلب منشور</button>
+    </div>
+
+    <div id="formLinks">
+      <div class="grouprow">
+        <select id="groupSelect" style="flex:1"></select>
+        <button type="button" class="btn small ghost" id="delGroupBtn" style="display:none">حذف</button>
+      </div>
+
+      <div class="caps">
+        <div class="param">
+          <button type="button" class="tgl on" data-key="max_post"></button>
+          <input type="number" id="pMaxPost" value="50" min="1" max="500" placeholder="max post">
+        </div>
+        <div class="param">
+          <button type="button" class="tgl on" data-key="max_scrolls"></button>
+          <input type="number" id="pMaxScrolls" value="60" min="1" max="500" placeholder="max scrolls">
+        </div>
+        <div class="param">
+          <button type="button" class="tgl off" data-key="max_duration"></button>
+          <input type="number" id="pMaxDuration" value="" min="1" placeholder="Time" disabled>
+        </div>
+      </div>
+      <div id="gateHint" class="gate">يجب تفعيل حدٍّ واحد على الأقل.</div>
+
+      <div class="namerow">
+        <label style="margin:0;white-space:nowrap">اسم الملف</label>
+        <input type="text" id="linkBaseName" dir="ltr" placeholder="فارغ = تلقائي (اسم المجموعة)" style="flex:1">
+      </div>
+      <div id="nameHint" class="hint"></div>
+    </div>
+
+    <div id="formPost" style="display:none;">
+      <label>المصدر</label>
+      <select id="postSource">
+        <option value="url">رابط واحد</option>
+        <option value="file">من ملف مُجمَّع (قائمة روابط)</option>
+      </select>
+      <div id="postUrlBox">
+        <label>رابط المنشور</label>
+        <input type="text" id="postUrl" dir="ltr" placeholder="https://www.facebook.com/groups/.../posts/.../">
+      </div>
+      <div id="postFileBox" style="display:none;">
+        <label>ملف الروابط (data/json — التقارير)</label>
+        <select id="postFile"></select>
+      </div>
+      <div id="skipFileBlock" style="margin:6px 0 4px;padding:8px;border:1px solid var(--line);border-radius:8px;">
+        <label style="margin:0;color:var(--text);"><input type="checkbox" id="skipFileCb" style="width:auto;margin-left:6px;vertical-align:middle;" checked> استكمال من حيث توقفنا (تجاهل ما تم جلبه)</label>
+        <div id="skipFileInfo" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+    </div>
+
+    <div class="actrow">
+      <button class="btn" id="runBtn">جمع</button>
+      <label class="cmt" id="cmtBox"><input type="checkbox" id="optComments" style="width:auto;vertical-align:middle;"> جلْب التعليقات أيضًا</label>
+    </div>
+
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+  <div class="card">
+    <h2>المهمة الحالية</h2>
+    <div class="flex">
+      <span class="badge blu" id="jobState">خاملة</span>
+      <button class="btn danger" id="stopBtn" disabled>حفظ وإيقاف</button>
+      <button class="btn ghost" id="clearBtn">مسح المهمة</button>
+    </div>
+    <p class="muted small" style="margin-top:6px">يوقف المهمة الجارية ويحفظ البيانات المجمعة حتى الآن.</p>
+  </div>
+
+  <div class="card">
+    <h2>السجل المباشر</h2>
+    <pre id="logBox" dir="ltr" style="text-align:left;max-height:340px;overflow:auto;background:rgba(0,0,0,.25);padding:10px;border-radius:8px;font-size:12px;white-space:pre-wrap"></pre>
+    <div id="resultBox" class="mt"></div>
+  </div>
+  </div>
+  </div>
+
+  <div class="card">
+    <h2>التقارير الجاهزة (data/json)</h2>
+    <div class="flex mb">
+      <button class="btn secondary small" id="refreshReports">↻ تحديث</button>
+    </div>
+    <div class="flex" style="align-items:center;gap:8px;margin-bottom:8px">
+      <label style="margin:0;font-weight:500;white-space:nowrap">اسم الملف المدمج:</label>
+      <input type="text" id="mergeName" dir="ltr" placeholder="merged_20260913" style="flex:1">
+      <button class="btn small" id="mergeBtn">دمج المحدد</button>
+    </div>
+    <div id="reportList" class="list"></div>
+  </div>
+
+  <div id="groupModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:99;align-items:center;justify-content:center;padding:16px">
+    <div class="card" style="width:100%;max-width:420px;margin:auto">
+      <h2>إضافة مجموعة</h2>
+      <label>اسم المجموعة</label>
+      <input type="text" id="gName" dir="rtl" placeholder="مثال: مجموعة الفقه" autocomplete="off">
+      <label>رابط المجموعة</label>
+      <input type="url" id="gLink" dir="ltr" placeholder="https://www.facebook.com/groups/1234567890">
+      <div class="hint" id="groupModalMsg"></div>
+      <div class="flex mt">
+        <button class="btn" id="gSaveBtn">حفظ</button>
+        <button class="btn ghost" id="gCancelBtn">إلغاء</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let jobId = null;
+let lastJobRunning = false;
+let mode = 'links';
+const capKeys = ['max_post', 'max_scrolls', 'max_duration'];
+const toggleState = { max_post: true, max_scrolls: true, max_duration: false };
+let reportNames = [];
+let groupsCache = [];
+
+async function getJSON(url, opts) {
+  try {
+    const r = await fetch(url, opts);
+    return { ok: r.ok, body: await r.json().catch(() => ({})) };
+  } catch (e) { return { ok: false, body: {} }; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function showMsg(id, type, text) {
+  $(id).innerHTML = type ? '<div class="notice ' + type + '" style="margin-top:10px">' + text + '</div>' : '';
+}
+
+function setMode(m) {
+  mode = m;
+  $('tabLinks').classList.toggle('on', m === 'links');
+  $('tabPost').classList.toggle('on', m === 'post');
+  $('formLinks').style.display = m === 'links' ? '' : 'none';
+  $('formPost').style.display = m === 'post' ? '' : 'none';
+  $('cmtBox').style.display = m === 'links' ? '' : 'none';
+  updateGate();
+  updateSkipFileBlock();
+}
+
+function anyCapActive() {
+  return capKeys.some(k => toggleState[k]);
+}
+
+function capInputId(key) {
+  return key === 'max_post' ? 'pMaxPost' : key === 'max_scrolls' ? 'pMaxScrolls' : 'pMaxDuration';
+}
+
+function parseCaps(key) {
+  const raw = $(capInputId(key)).value.trim();
+  const v = parseInt(raw, 10);
+  return raw !== '' && !isNaN(v) && v > 0 ? v : null;
+}
+
+function groupChosen() {
+  return selectedGroupLink() !== '';
+}
+
+function updateGate() {
+  const btn = $('runBtn');
+  if (mode === 'links') {
+    const ok = anyCapActive() && groupChosen();
+    btn.disabled = !ok;
+    btn.textContent = ok ? 'جمع' : 'انتظر البيانات';
+    $('gateHint').style.display = anyCapActive() ? 'none' : '';
+  } else {
+    btn.textContent = 'جلب التعليقات';
+    btn.disabled = false;
+  }
+}
+
+function setToggle(key, on) {
+  toggleState[key] = on;
+  const btn = document.querySelector('.tgl[data-key="' + key + '"]');
+  const input = $(capInputId(key));
+  if (btn) { btn.className = 'tgl ' + (on ? 'on' : 'off'); btn.textContent = key; }
+  if (input) input.disabled = !on;
+  updateGate();
+}
+
+function initToggles() {
+  document.querySelectorAll('.tgl').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      setToggle(key, !toggleState[key]);
+    });
+    setToggle(btn.dataset.key, !!toggleState[btn.dataset.key]);
+  });
+}
+
+function sanitizeName(raw) {
+  return String(raw || '').replace(/[\\/*?:"<>|]+/g, '').trim().replace(/\s+/g, '_');
+}
+
+function deriveCommentsName(fname) {
+  let b = String(fname || '').toLowerCase();
+  b = b.replace(/\.json$/i, '').replace(/\.txt$/i, '');
+  b = b.replace(/_\d{8}_\d{6}$/, '');
+  for (const suf of ['_urls', '_links', '_posts', '_comments']) {
+    if (b.endsWith(suf)) b = b.slice(0, -suf.length);
+  }
+  return (b || 'post') + '_comments.json';
+}
+
+function updateNameHint() {
+  const hint = $('nameHint');
+  const base = sanitizeName($('linkBaseName').value);
+  if (!base) { hint.textContent = ''; return; }
+  const conflict = ['_posts.json', '_comments.json', '_links.json'].some(
+    suffix => reportNames.indexOf(base + suffix) !== -1);
+  if (conflict) { hint.textContent = 'الاسم غير متاح — سيُضاف التاريخ.'; hint.style.color = '#f59e0b'; }
+  else { hint.textContent = 'الاسم متاح.'; hint.style.color = '#22c55e'; }
+}
+
+async function _skipInfoLoad(cname, info) {
+  const r = await getJSON('/api/fbread/file/' + encodeURIComponent(cname));
+  const n = (r.ok && r.body.content && Array.isArray(r.body.content.posts)) ? r.body.content.posts.length : 0;
+  info.textContent = n
+    ? cname + ': ' + n + ' منشور جُلب مسبقًا — يُستأنف من آخر منشور.'
+    : cname + ': ملف جديد — يبدأ من الأول.';
+}
+
+function updateSkipFileBlock() {
+  const block = $('skipFileBlock');
+  const cb = $('skipFileCb');
+  const info = $('skipFileInfo');
+  if (mode !== 'post' || $('postSource').value !== 'file') { block.style.display = 'none'; return; }
+  block.style.display = '';
+  const fname = $('postFile').value;
+  cb.disabled = !fname;
+  if (!fname) { info.textContent = ''; return; }
+  _skipInfoLoad(deriveCommentsName(fname), info);
+}
+
+async function loadStatus() {
+  const r = await getJSON('/api/fbread/status');
+  if (!r.ok) { $('sessMsg').textContent = 'خطأ اتصال'; return; }
+  const st = r.body;
+  const sb = $('sessBadge');
+  if (st.session_ok) { sb.textContent = 'FB: جلسة جاهزة'; sb.className = 'badge green'; }
+  else { sb.textContent = 'FB: لا توجد جلسة'; sb.className = 'badge red'; }
+
+  const job = st.job;
+  if (job) {
+    jobId = job.id;
+    $('jobState').textContent = job.status;
+    $('jobState').className = 'badge blu';
+    $('stopBtn').disabled = !['pending', 'running', 'waiting_login', 'stopping'].includes(job.status);
+    if (job.logs && job.logs.length) $('logBox').textContent = job.logs.join('\n');
+    renderResult(job);
+    const runningNow = ['pending', 'running', 'waiting_login', 'stopping'].includes(job.status);
+    if (lastJobRunning && !runningNow && (job.status === 'done' || job.status === 'error')) listReports();
+    lastJobRunning = runningNow;
+  } else {
+    jobId = null;
+    $('stopBtn').disabled = true;
+    $('jobState').textContent = 'خاملة';
+    lastJobRunning = false;
+  }
+  const busy = ['pending', 'running', 'waiting_login', 'stopping'].includes($('jobState').textContent);
+  if (busy) { $('runBtn').disabled = true; $('runBtn').textContent = 'يعمل…'; }
+  else updateGate();
+}
+
+function renderResult(job) {
+  const box = $('resultBox');
+  if (!job.result) { box.innerHTML = ''; return; }
+  const res = job.result;
+  let html = '';
+  if (res.path) {
+    const stem = String(res.path).split(/[\\/]/).pop().replace(/\.json$/i, '');
+    html += '<p><b>الملف:</b> <code>' + escapeHtml(stem) + '</code> — ' +
+      '<a href="/fb/reports/' + encodeURIComponent(stem) + '/view" target="_blank">عرض</a> · ' +
+      '<a href="/upload">اذهب إلى الرفع</a></p>';
+  }
+  if (res.count !== undefined) html += '<p>منشورات: <b>' + res.count + '</b></p>';
+  if (res.comments_count !== undefined) html += '<p>تعليقات: <b>' + res.comments_count + '</b></p>';
+  if (res.comments_path) {
+    const stem = String(res.comments_path).split(/[\\/]/).pop().replace(/\.json$/i, '');
+    html += '<p><b>التعليقات:</b> <code>' + escapeHtml(stem) + '</code> — ' +
+      '<a href="/fb/reports/' + encodeURIComponent(stem) + '/view" target="_blank">عرض</a></p>';
+  }
+  if (res.stopped) html += '<p><span class="badge amber">↻ إيقاف مؤقت — بيانات جزئية محفوظة</span></p>';
+  if (job.error) html += '<p><span class="badge red">' + escapeHtml(job.error) + '</span></p>';
+  box.innerHTML = html;
+}
+
+async function listReports() {
+  const r = await getJSON('/api/fb/reports');
+  const box = $('reportList');
+  box.innerHTML = '';
+  if (!r.ok || !r.body.reports) { box.innerHTML = '<p class="muted small">خطأ في تحميل التقارير.</p>'; return; }
+  const list = r.body.reports.filter(x => /\.json$/i.test(x.name || ''));
+  reportNames = list.map(x => x.name);
+  updateNameHint();
+  updateSkipFileBlock();
+  refreshPostFiles();
+  if (!list.length) { box.innerHTML = '<p class="muted small">لا تقارير بعد.</p>'; return; }
+  for (const rep of list) {
+    const rid = rep.id;
+    const partialBadge = rep.partial ? ' <span class="badge amber" title="جلب جزئي">جزئي</span>' : '';
+    const it = document.createElement('div');
+    it.className = 'item';
+    it.innerHTML = '<div class="row" style="align-items:center;gap:8px">' +
+      '<input type="checkbox" class="rchk" data-id="' + escapeHtml(rid) + '" style="width:auto" title="تحديد للدمج">' +
+      '<span class="title mono" dir="ltr" style="flex:1">' + escapeHtml(rep.name) + '</span>' + partialBadge +
+      '<span class="muted small">' + (rep.size / 1024).toFixed(1) + ' KB</span>' +
+      '<button class="btn small secondary" data-view="' + escapeHtml(rid) + '">عرض</button>' +
+      '<button class="btn small ghost" data-ren="' + escapeHtml(rid) + '">إعادة تسمية</button>' +
+      '</div>';
+    box.appendChild(it);
+  }
+  box.querySelectorAll('[data-view]').forEach(b => b.onclick = () =>
+    window.open('/fb/reports/' + encodeURIComponent(b.dataset.view) + '/view', '_blank'));
+  box.querySelectorAll('[data-ren]').forEach(b => b.onclick = () => renameReport(b.dataset.ren));
+}
+
+async function refreshPostFiles() {
+  const sel = $('postFile');
+  const current = sel.value;
+  sel.innerHTML = '';
+  if (!reportNames.length) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = 'لا ملفات بعد — شغّل «روابط المجموعة» أولاً.';
+    sel.appendChild(o);
+    return;
+  }
+  for (const name of reportNames) {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = name;
+    sel.appendChild(o);
+  }
+  if (current && reportNames.indexOf(current) !== -1) sel.value = current;
+}
+
+async function renameReport(rid) {
+  const name = prompt('الاسم الجديد (بدون .json):', rid);
+  if (name === null || name.trim() === '') return;
+  const r = await getJSON('/api/fb/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: rid, new: name.trim() }),
+  });
+  showMsg('sessMsg', r.ok ? 'ok' : 'err',
+    escapeHtml((r.body && (r.body.error || ('أعيدت التسمية: ' + r.body.renamed))) || ('HTTP ' + r.status)));
+  listReports();
+}
+
+async function mergeReports() {
+  const ids = Array.from(document.querySelectorAll('.rchk:checked')).map(c => c.dataset.id);
+  if (!ids.length) { showMsg('sessMsg', 'err', 'حدّد تقريرًا واحدًا على الأقل للدمج.'); return; }
+  const out = $('mergeName').value.trim();
+  const r = await getJSON('/api/fb/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names: ids, out: out || null }),
+  });
+  showMsg('sessMsg', r.ok ? 'ok' : 'err',
+    escapeHtml((r.body && (r.body.error || ('تم الدمج: ' + r.body.name))) || ('HTTP ' + r.status)));
+  listReports();
+}
+
+async function loadGroups() {
+  const r = await getJSON('/api/fb/groups');
+  const sel = $('groupSelect');
+  sel.innerHTML = '';
+  groupsCache = (r.ok && Array.isArray(r.body.groups)) ? r.body.groups : [];
+  if (!groupsCache.length) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = 'لا مجموعات محفوظة — أضف من «+».';
+    sel.appendChild(o);
+  }
+  for (const g of groupsCache) {
+    const o = document.createElement('option');
+    o.value = g.id || '';
+    o.textContent = (g.name || g.id || '') + (g.link ? ' — ' + g.link : '');
+    sel.appendChild(o);
+  }
+  const add = document.createElement('option');
+  add.value = '__add__';
+  add.textContent = '➕ مجموعة جديدة';
+  sel.appendChild(add);
+  updateGate();
+  updateDelBtn();
+}
+
+function updateDelBtn() {
+  const v = $('groupSelect').value;
+  $('delGroupBtn').style.display = (v && v !== '__add__') ? '' : 'none';
+}
+
+async function deleteGroup() {
+  const gid = $('groupSelect').value;
+  if (!gid || gid === '__add__') return;
+  if (!confirm('حذف هذه المجموعة؟')) return;
+  const r = await getJSON('/api/fb/groups/' + encodeURIComponent(gid), { method: 'DELETE' });
+  if (!r.ok || !r.body.ok) { showMsg('sessMsg', 'err', escapeHtml((r.body && r.body.error) || ('HTTP ' + r.status))); return; }
+  await loadGroups();
+}
+
+function selectedGroupLink() {
+  const g = groupsCache.find(x => String(x.id) === String($('groupSelect').value));
+  return g ? (g.link || '') : '';
+}
+
+function openGroupModal() {
+  $('gName').value = '';
+  $('gLink').value = '';
+  $('groupModalMsg').textContent = '';
+  $('groupModal').style.display = 'flex';
+  $('gName').focus();
+}
+
+function closeGroupModal() {
+  $('groupModal').style.display = 'none';
+}
+
+async function saveGroup() {
+  const msg = $('groupModalMsg');
+  const name = $('gName').value.trim();
+  const link = $('gLink').value.trim();
+  if (!name || !link) {
+    msg.textContent = 'الاسم والرابط مطلوبان.';
+    msg.style.color = '#ef4444';
+    return;
+  }
+  const r = await getJSON('/api/fb/groups', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, link }),
+  });
+  if (!r.ok || !r.body.ok) {
+    msg.textContent = (r.body && r.body.error) || ('HTTP ' + r.status);
+    msg.style.color = '#ef4444';
+    return;
+  }
+  closeGroupModal();
+  await loadGroups();
+  const g = (r.body.groups || []).find(x =>
+    String((x.link || '').replace(/\/$/, '')).toLowerCase() === String(link.replace(/\/$/, '')).toLowerCase());
+  if (g) $('groupSelect').value = g.id || '';
+  updateGate();
+}
+
+function selectedGroupLink() {
+  const g = groupsCache.find(x => String(x.id) === String($('groupSelect').value));
+  return g ? (g.link || '') : '';
+}
+
+function buildParams() {
+  if (mode === 'post') {
+    const source = $('postSource').value;
+    if (source === 'file') {
+      const f = $('postFile').value;
+      if (!f) { showMsg('sessMsg', 'err', 'اختر ملف روابط أولاً.'); return null; }
+      const params = { file: f };
+      if ($('skipFileBlock').style.display !== 'none') params.skip_existing = $('skipFileCb').checked;
+      return params;
+    }
+    const url = $('postUrl').value.trim();
+    if (!url) { showMsg('sessMsg', 'err', 'رابط المنشور مطلوب.'); return null; }
+    return { post_url: url };
+  }
+  if (!groupChosen()) { showMsg('sessMsg', 'err', 'اختر مجموعة أو أدخل رابطًا.'); return null; }
+  if (!anyCapActive()) { showMsg('sessMsg', 'err', 'يجب تفعيل حدٍّ واحد على الأقل.'); return null; }
+  const params = {
+    group_url: selectedGroupLink(),
+    comments: $('optComments').checked,
+    base_name: sanitizeName($('linkBaseName').value) || null,
+  };
+  for (const key of capKeys) {
+    params[key === 'max_duration' ? 'max_duration_min' : key] = toggleState[key] ? parseCaps(key) : null;
+  }
+  return params;
+}
+
+async function startRun() {
+  const params = buildParams();
+  if (!params) return;
+  showMsg('sessMsg', '', '');
+  $('logBox').textContent = '';
+  $('resultBox').innerHTML = '';
+  const r = await getJSON('/api/fbread/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, params }),
+  });
+  if (!r.ok || !r.body.ok) {
+    showMsg('sessMsg', 'err', escapeHtml((r.body && r.body.error) || 'HTTP ' + (r.status || '?')));
+    return;
+  }
+  jobId = r.body.job.id;
+}
+
+async function stopJob() {
+  const r = await getJSON('/api/fbread/stop', { method: 'POST' });
+  if (!r.ok || !r.body.ok) showMsg('sessMsg', 'err', escapeHtml(r.body.error || 'لا مهمة نشطة'));
+}
+
+async function clearJob() {
+  const r = await getJSON('/api/fbread/clear', { method: 'POST' });
+  if (r.ok) { $('logBox').textContent = ''; $('resultBox').innerHTML = ''; $('jobState').textContent = 'خاملة'; }
+}
+
+async function doLogin() {
+  showMsg('sessMsg', '', '');
+  const r = await getJSON('/api/fbread/login', { method: 'POST' });
+  if (!r.ok || !r.body.ok) showMsg('sessMsg', 'err', escapeHtml((r.body && r.body.error) || 'فشل'));
+  else showMsg('sessMsg', 'info', 'ستفتح نافذة Chrome — سجّل الدخول إلى فيسبوك ثم انتظر.');
+}
+
+async function delSession() {
+  if (!confirm('حذف جلسة فيسبوك؟')) return;
+  const r = await getJSON('/api/fbread/session', { method: 'DELETE' });
+  if (r.ok) loadStatus();
+}
+
+$('tabLinks').onclick = () => setMode('links');
+$('tabPost').onclick = () => setMode('post');
+$('postSource').onchange = () => {
+  $('postUrlBox').style.display = $('postSource').value === 'url' ? '' : 'none';
+  $('postFileBox').style.display = $('postSource').value === 'file' ? '' : 'none';
+  updateSkipFileBlock();
+};
+$('postFile').onchange = updateSkipFileBlock;
+$('groupSelect').onchange = () => {
+  const v = $('groupSelect').value;
+  if (v === '__add__') {
+    openGroupModal();
+    $('groupSelect').value = groupsCache.length ? String(groupsCache[0].id) : '';
+  }
+  updateGate();
+  updateDelBtn();
+};
+$('gSaveBtn').onclick = saveGroup;
+$('gCancelBtn').onclick = closeGroupModal;
+$('gName').addEventListener('keydown', e => { if (e.key === 'Enter') saveGroup(); });
+$('gLink').addEventListener('keydown', e => { if (e.key === 'Enter') saveGroup(); });
+$('delGroupBtn').onclick = deleteGroup;
+$('linkBaseName').oninput = updateNameHint;
+$('runBtn').onclick = startRun;
+$('stopBtn').onclick = stopJob;
+$('clearBtn').onclick = clearJob;
+$('loginBtn').onclick = doLogin;
+$('delSessBtn').onclick = delSession;
+$('mergeBtn').onclick = mergeReports;
+$('refreshReports').onclick = listReports;
+$('mergeName').addEventListener('keydown', e => { if (e.key === 'Enter') mergeReports(); });
+['pMaxPost', 'pMaxScrolls', 'pMaxDuration'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') startRun(); });
+});
+
+if (window.scTheme) scTheme.init();
+initToggles();
+loadStatus();
+listReports();
+loadGroups();
+setInterval(loadStatus, 1500);
+</script>
+</body>
+</html>

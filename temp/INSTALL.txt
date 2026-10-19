@@ -1,0 +1,70 @@
+scrapperNlm - Quick Start
+=========================
+
+What You Need
+-------------
+- A Windows 10/11 PC (64-bit). Works from a normal folder; the path may contain spaces.
+- Internet access (first-time setup downloads Python libraries + Chromium).
+- Your OWN NotebookLM (Google) account - login is done by you, once.
+- A Facebook API token for the SocialAPIs service - enter it in .env (see below).
+
+Files
+-----
+- setup.bat             -> one-time installer (creates venv, installs deps + Chromium)
+- start.bat             -> launch the app in the background, opens the browser
+- stop.bat              -> stop the app (port 5000)
+- create-shortcut.ps1   -> creates the desktop shortcut (used by setup)
+- INSTALL.txt           -> this file
+- .env.example          -> token template (copy to .env and fill in)
+
+First-Time Setup (once)
+-----------------------
+Run setup.bat:
+  1. Python 3.13 must already be installed (see Troubleshooting if missing).
+  2. It creates a local "venv" folder and installs dependencies.
+  3. It installs Playwright Chromium (needed by NotebookLM).
+  4. If .env does not exist, it is created from .env.example.
+  5. It creates a desktop shortcut named "scrapeLm.exe" (icon: ScrapLm.ico if present).
+  6. When setup finishes you can start the app with start.bat / the desktop shortcut.
+
+Token Setup
+-----------
+- Open .env and replace SOCIALAPIS_TOKEN with YOUR OWN token from
+  https://socialapis.io, then restart the app (stop.bat then start.bat).
+- Never share your token. The .env file is excluded from source control.
+
+NotebookLM Login
+----------------
+- From the app, use the "NotebookLM login" button; a new window opens so you
+  can sign in with your own Google account. The connection is stored per user
+  on this PC (facebook_session.json is also excluded from source control).
+
+Daily Use
+---------
+- Double-click the desktop shortcut "scrapeLm.exe" (or start.bat) -> app
+  starts in the background, browser opens at:
+      http://127.0.0.1:5000
+- If the app is already running, it just opens the browser.
+- To stop the app: stop.bat (or click "Uygulamayi Durdur" if available).
+
+Settings
+--------
+- Default port is 5000. To change it, set the SCNLM_PORT environment variable
+  before running start.bat (e.g. `set SCNLM_PORT=5001`).
+
+Troubleshooting
+---------------
+- Server does not start -> check app_err.log next to start.bat.
+- NotebookLM shows "login required" -> run manually:
+      venv\Scripts\python.exe -m notebooklm login
+- Port already in use -> run stop.bat, or start with a different SCNLM_PORT.
+- "Python bulunamadi" during setup -> install Python 3.13 yourself from
+  https://www.python.org/downloads/release/python-3137/ (tick
+  "Add python.exe to PATH"), then run setup.bat again.
+
+Privacy
+-------
+- .env contains YOUR Facebook API token. Keep it private.
+- The NotebookLM connection is YOUR personal Google login (stored per user).
+- Scraped Facebook data is stored locally under data/ and uploads/ and is not
+  meant to be published.

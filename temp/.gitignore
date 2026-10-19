@@ -1,0 +1,19 @@
+# secrets - asla commit etme
+.env
+.env.*
+!.env.example
+
+# python
+venv/
+__pycache__/
+*.pyc
+
+# runtime data / reports (sahsi facebook verileri)
+data/
+uploads/
+app.log
+app_err.log
+*.log
+
+# facebook oturum
+facebook_session.json

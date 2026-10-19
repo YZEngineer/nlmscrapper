@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>عرض التقرير — {{ title }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0;
+          background: #f0f2f5; color: #1c1e21; line-height: 1.5; }
+  header { background: #4267b2; color: #fff; padding: 16px 20px; position: sticky; top: 0; z-index: 10; }
+  header h1 { margin: 0 0 4px; font-size: 1.3rem; }
+  header .sub { font-size: .8rem; opacity: .85; }
+  nav.controls { background: #fff; border-bottom: 1px solid #ddd; padding: 8px 20px; display: flex;
+                  gap: 8px; flex-wrap: wrap; position: sticky; top: 0; z-index: 9; }
+  nav.controls .back { color: #385898; text-decoration: none; font-weight: 600; font-size: .88rem; }
+  nav.controls .back:hover { text-decoration: underline; }
+  main { max-width: 860px; margin: 20px auto; padding: 0 16px; }
+  .g-block.active { display: block; }
+  .g-title { font-size: .95rem; color: #65676b; margin: 4px 0 14px; font-weight: 600; }
+  .post { background: #fff; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.12);
+           padding: 18px; margin-bottom: 20px; }
+  .post h3 { margin: 0 0 6px; font-size: 1.05rem; color: #385898; }
+  .post-meta { font-size: .78rem; color: #65676b; margin-bottom: 10px; word-break: break-all; }
+  .post-meta a { color: #385898; text-decoration: none; }
+  .post-meta a:hover { text-decoration: underline; }
+  .badge { background: #e7ecf5; color: #385898; border-radius: 12px; padding: 2px 10px;
+            font-size: .75rem; font-weight: 600; margin-left: 6px; }
+  .badge.partial { background: #fff3cd; color: #856404; }
+  .badge.error { background: #f8d7da; color: #721c24; }
+  .post-body { white-space: pre-wrap; word-break: break-word; background: #f7f8fa;
+                border-right: 4px solid #4267b2; padding: 12px 14px; border-radius: 6px;
+                margin-bottom: 14px; }
+  .comment { background: #f0f2f5; border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  .reply { background: #e9edf4; border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
+  .c-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .author { font-weight: 600; color: #385898; font-size: .9rem; }
+  .date { color: #65676b; font-size: .75rem; }
+  .react { margin-right: auto; color: #65676b; font-size: .78rem; white-space: nowrap; }
+  .c-text { white-space: pre-wrap; word-break: break-word; font-size: .92rem; }
+  .muted { color: #65676b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>منشورات وتعلّيقات المجموعة
+    {% if is_partial %}<span class="badge partial">جلب جزئي (انقطاع)</span>{% endif %}
+  </h1>
+  <div class="sub">{{ title }} <span class="badge" style="background:rgba(255,255,255,.2)">{{ post_count }} منشور · {{ comment_count }} تعليق</span>
+    {% if is_partial %}<span class="badge" style="background:rgba(255,255,255,.2)">بيانات جزئية قد لا تكتمل</span>{% endif %}
+  </div>
+  {% if error_txt %}<div class="sub" style="color:#ffe0e0">خطأ: {{ error_txt }}</div>{% endif %}
+</header>
+<nav class="controls">
+  <a class="back" href="javascript:history.length>1 ? history.back() : location.href='/upload'">→ عودة</a>
+</nav>
+<main>
+<section class="g-block active">
+  <h2 class="g-title">المجموعة: {{ group_id }} ({{ post_count }} منشور)</h2>
+  {% for post in posts %}
+  <article class="post" id="post-{{ post.id }}">
+    <h3>منشور {{ loop.index }} <span class="badge">{{ post.comment_count }} تعليق/رد</span></h3>
+    <div class="post-meta">post_id: {{ post.id }}
+      {% if post.url %}<a href="{{ post.url }}" target="_blank">[الأصل]</a>{% endif %}
+      {% if post.date and post.date != "" %} · {{ post.date }}{% endif %}
+    </div>
+    {% if post.text %}<div class="post-body">{{ post.text }}</div>{% endif %}
+    <div class="comments">
+      {% if post.comments %}
+        {% for c in post.comments %}
+        <div class="comment" style="margin-right:0px">
+          <div class="c-head"><span class="author">{{ c.author }}</span><span class="date">{{ c.date }}</span><span class="react">{{ c.reactions }} 👍</span></div>
+          {% if c.text %}<div class="c-text">{{ c.text }}</div>{% endif %}
+          {% for r in c.replies %}
+          <div class="reply" style="margin-right:24px">
+            <div class="c-head"><span class="author">{{ r.author }}</span><span class="date">{{ r.date }}</span><span class="react">{{ r.reactions }} 👍</span></div>
+            {% if r.text %}<div class="c-text">{{ r.text }}</div>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">لا توجد تعليقات</p>
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+  {% if not posts %}
+    <p class="muted">لا توجد منشورات في هذا التقرير.</p>
+  {% endif %}
+</section>
+</main>
+</body>
+</html>

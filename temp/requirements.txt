@@ -1,0 +1,5 @@
+flask
+requests
+python-dotenv
+notebooklm-py==0.4.1
+playwright>=1.49

@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رفع إلى NotebookLM</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>try{if(localStorage.getItem('scNlmTheme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="topnav">
+  <span class="brand">scrapperNlm</span>
+  <a class="navlink" href="/">الرئيسية</a>
+  <a class="navlink" href="/scrape">جلب بواسطة socialapis.io API</a>
+  <a class="navlink" href="/fbread">جلب بيانات فيسبوك</a>
+  <a class="navlink active" href="/upload">رفع إلى NotebookLM</a>
+  <a class="navlink" href="/chat">المحادثة</a>
+  <span class="spacer"></span>
+  <button id="themeBtn" class="btn ghost small" onclick="window.scTheme && scTheme.toggle()" title="Toggle theme">🌙</button>
+  <span id="authBadge" class="badge amber">الحالة: فحص…</span>
+</div>
+
+<div class="container">
+  <h1> رفع الملفات إلى NotebookLM وإدارة المصادر</h1>
+
+
+  <div class="card" id="authCard">
+    <div class="flex">
+      <h2 style="margin:0">اتصال NotebookLM</h2>
+      <span id="authBadge2" class="badge amber"></span>
+      <button class="btn secondary small" id="loginBtn">تسجيل الدخول (يفتح نافذة منفصلة)</button>
+    </div>
+    <p id="authHint" class="small muted mt"></p>
+  </div>
+
+  <div class="card" id="nbCard" style="display:none">
+    <h2>اختيار الدفتر</h2>
+    <div class="flex">
+      <select id="nbSelect" style="flex:1"></select>
+      <button class="btn secondary small" id="nbRefresh">↻ تحديث</button>
+    </div>
+    <div class="flex mt">
+      <input type="text" id="newNbTitle" placeholder="اسم دفتر جديد…" style="flex:1">
+      <button class="btn small" id="newNbBtn">+ إنشاء</button>
+    </div>
+  </div>
+
+  <div class="card" id="uploadCard" style="display:none">
+    <h2>إضافة مصدر</h2>
+    <div class="grid2">
+      <div>
+        <label>الطريقة</label>
+        <select id="sourceType">
+          <option value="file">رفع ملف ( /docx/txt)</option>
+          <option value="url">رابط / YouTube</option>
+          <option value="text">نص ملصق</option>
+        </select>
+
+        <div id="filePane" class="mt">
+          <div class="dropzone" id="dropzone">
+            <p><b>اسحب الملف وأفلته</b> أو انقر</p>
+            <p class="small"> ارفع ملف الى notebooklm</p>
+          </div>
+          <input type="file" id="fileInput" accept=".json,.pdf,.docx,.doc,.txt,.csv,.xlsx,.pptx,.epub,.mp3,.mp4" style="display:none">
+        </div>
+
+        <div id="urlPane" class="mt hide">
+          <label>الرابط (يمكن أن يكون YouTube)</label>
+          <input type="url" id="urlInput" dir="ltr" placeholder="https://…">
+        </div>
+
+        <div id="textPane" class="mt hide">
+          <label>العنوان</label>
+          <input type="text" id="textTitle" value="نص ملصق">
+          <label>النص</label>
+          <textarea id="textInput" placeholder="الصق المحتوى هنا…" rows="5"></textarea>
+        </div>
+
+        <label class="flex mt" style="align-items:center;gap:6px;font-weight:500;color:var(--text)">
+          <input type="checkbox" id="waitReady" checked style="width:auto"> الانتظار حتى المعالجة
+        </label>
+        <button class="btn mt" id="addBtn">⬆ إضافة</button>
+        <div id="addAlert"></div>
+      </div>
+
+      <div>
+        <label>المصادر</label>
+        <div class="flex mb">
+          <button class="btn small danger" id="dedupBtn">إزالة المكررات</button>
+          <span class="small muted">حذف التكرارات بنفس العنوان (يُحتفظ بالأول)</span>
+        </div>
+        <div id="sourceList" class="list"><p class="muted small">لم يُحدد دفتر.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="fbCard">
+    <div class="flex mb">
+      <h2 style="margin:0">مخرجات فيسبوك</h2>
+      <button class="btn secondary small" id="fbRefresh">↻ تحديث</button>
+      <button class="btn small" id="fbUploadMissing">رفع المفقود فقط</button>
+      <button class="btn small" id="fbUploadAll">⬆ رفع الكل وإزالة المكررات</button>
+    </div>
+    <p class="small muted mb">تقارير فيسبوك</p>
+    <div id="fbSourceList" class="list"><p class="muted small">جارٍ فحص التقارير…</p></div>
+    <div id="fbAlert"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentNb = null;
+
+async function getJSON(url, opts) { const r = await fetch(url, opts); return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) }; }
+function showAlert(id, type, text) { $(id).innerHTML = type ? '<div class="notice ' + type + '" style="margin-top:10px">' + escapeHtml(text || '') + '</div>' : ''; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderAuth(st) {
+  const ok = st.authenticated;
+  const label = ok ? 'متصل' : 'يلزم الدخول';
+  ['authBadge', 'authBadge2'].forEach(id => {
+    const el = $(id); el.textContent = label; el.className = 'badge ' + (ok ? 'green' : 'red');
+  });
+  $('authHint').textContent = ok
+    ? 'متصل بحساب NotebookLM. يمكنك المتابعة.'
+    : (st.error || 'لا يوجد اتصال. اضغط "تسجيل الدخول" واتبع الخطوات في النافذة المنفصلة.');
+  $('nbCard').style.display = ok ? 'block' : 'none';
+  $('uploadCard').style.display = ok ? 'block' : 'none';
+  if (ok) loadNotebooks();
+}
+
+async function loadStatus() {
+  const r = await getJSON('/api/nlm/status');
+  renderAuth(r.ok && r.body.authenticated ? { authenticated: true } : { authenticated: false, error: r.body.error });
+}
+
+async function loadNotebooks() {
+  const r = await getJSON('/api/nlm/notebooks');
+  if (!r.ok) { showAlert('addAlert', 'err', r.body.error || 'تعذر الحصول على قائمة الدفاتر'); return; }
+  const sel = $('nbSelect');
+  const prev = currentNb;
+  sel.innerHTML = '';
+  for (const nb of r.body.notebooks || []) {
+    const opt = document.createElement('option');
+    opt.value = nb.id;
+    opt.textContent = nb.title + ' (' + nb.sources_count + ' مصدر)';
+    sel.appendChild(opt);
+  }
+  if (sel.options.length === 0) {
+    sel.innerHTML = '<option value="">لا توجد دفاتر — أنشئ من الأعلى</option>';
+  } else if (prev && [...sel.options].some(o => o.value === prev)) {
+    sel.value = prev;
+  }
+  currentNb = sel.value;
+  loadSources();
+  loadFbSources(currentNb || undefined);
+}
+
+async function loadSources() {
+  const nb = $('nbSelect').value;
+  currentNb = nb;
+  if (!nb) { $('sourceList').innerHTML = '<p class="muted small">اختر دفترًا.</p>'; return; }
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(nb) + '/sources');
+  const box = $('sourceList');
+  box.innerHTML = '';
+  if (!r.ok) { box.innerHTML = '<p class="muted small">' + escapeHtml(r.body.error || 'خطأ') + '</p>'; return; }
+  const list = r.body.sources || [];
+  if (!list.length) { box.innerHTML = '<p class="muted small">لا توجد مصادر في هذا الدفتر بعد.</p>'; return; }
+  for (const s of list) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    item.innerHTML = '<div class="row"><span class="title">' + escapeHtml(s.title) + '</span>' +
+      '<button class="btn small danger" data-del="' + s.id + '">حذف</button></div>';
+    box.appendChild(item);
+  }
+  box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteSource(b.dataset.del));
+}
+
+async function deleteSource(sid) {
+  if (!confirm('حذف هذا المصدر؟')) return;
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources/' + encodeURIComponent(sid), { method: 'DELETE' });
+  loadSources();
+  if (!r.ok) showAlert('addAlert', 'err', r.body.error);
+}
+
+async function loadFbSources(nbId) {
+  const url = nbId ? '/api/fb/reports?nb_id=' + encodeURIComponent(nbId) : '/api/fb/reports';
+  const r = await getJSON(url);
+  const box = $('fbSourceList');
+  box.innerHTML = '';
+  if (!r.ok) { box.innerHTML = '<p class="muted small">' + escapeHtml(r.body.error || 'خطأ') + '</p>'; return; }
+  const list = r.body.reports || [];
+  if (!list.length) { box.innerHTML = '<p class="muted small">لا توجد تقارير في data/json.</p>'; return; }
+  for (const rep of list) {
+    const item = document.createElement('div');
+    item.className = 'item';
+    const nbBadge = rep.in_notebook === null || rep.in_notebook === undefined
+      ? ''
+      : rep.in_notebook
+        ? '<span class="badge green">في الدفتر ✓</span>'
+        : '<span class="badge red">غير موجود</span>';
+    const partialBadge = rep.partial ? ' <span class="badge amber" title="جلب جزئي (انقطاع/خطأ)">جزئي ⟨⟩</span>' : '';
+    item.innerHTML = '<div class="row"><span class="title mono" style="direction:ltr">' + escapeHtml(rep.name) + '</span>' + partialBadge +
+      '<span class="muted small">' + (rep.size / 1024).toFixed(1) + ' KB</span>' + nbBadge +
+      '<button class="btn small secondary" data-view="' + rep.id + '">عرض</button>' +
+      '<button class="btn small" data-up="' + rep.id + '">رفع إلى NLM</button></div>';
+    box.appendChild(item);
+  }
+  box.querySelectorAll('[data-view]').forEach(b => b.onclick = () => viewReport(b.dataset.view));
+  box.querySelectorAll('[data-up]').forEach(b => b.onclick = () => uploadReport(b.dataset.up));
+}
+
+function viewReport(rid) {
+  window.open('/fb/reports/' + encodeURIComponent(rid) + '/view', '_blank');
+}
+
+async function uploadReport(rid) {
+  if (!currentNb) { showAlert('fbAlert', 'err', 'اختر دفترًا أولاً'); return; }
+  showAlert('fbAlert', '', '');
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources/from-report/' + rid, { method: 'POST' });
+  if (r.ok && r.body.ok) {
+    const s = r.body.source || {};
+    showAlert('fbAlert', 'ok', 'تم الرفع: <b>' + escapeHtml(s.title) + '</b> · الحالة: <b>' + escapeHtml(s.status) + '</b>');
+    loadSources();
+    loadNotebooks();
+    loadFbSources(currentNb);
+  } else {
+    showAlert('fbAlert', 'err', r.body.error || ('HTTP ' + r.status));
+  }
+}
+
+async function uploadMissingReports() {
+  if (!currentNb) { showAlert('fbAlert', 'err', 'اختر دفترًا أولاً'); return; }
+  if (!confirm('رفع التقارير غير الموجودة فقط (دون إزالة المكررات)؟')) return;
+  const btn = $('fbUploadMissing');
+  btn.disabled = true;
+  showAlert('fbAlert', '', '');
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources/upload-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dedup: false }) });
+  btn.disabled = false;
+  if (r.ok && r.body.ok) {
+    const up = (r.body.uploaded || []).length;
+    const sk = r.body.skipped || 0;
+    loadSources();
+    loadNotebooks();
+    loadFbSources(currentNb);
+    showAlert('fbAlert', 'ok', 'تم رفع <b>' + up + '</b> تقرير مفقود، وتخطّي <b>' + sk + '</b> (موجود).');
+  } else {
+    showAlert('fbAlert', 'err', r.body.error || ('HTTP ' + r.status));
+  }
+}
+
+async function uploadAllReports() {
+  if (!currentNb) { showAlert('fbAlert', 'err', 'اختر دفترًا أولاً'); return; }
+  if (!confirm('رفع جميع التقارير (المفقودة من الدفتر) ثم إزالة المكررات؟')) return;
+  const btn = $('fbUploadAll');
+  btn.disabled = true;
+  showAlert('fbAlert', '', '');
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources/upload-all', { method: 'POST' });
+  btn.disabled = false;
+  if (r.ok && r.body.ok) {
+    const up = (r.body.uploaded || []).length;
+    const sk = r.body.skipped || 0;
+    const rm = (r.body.removed || []).length;
+    loadSources();
+    loadNotebooks();
+    loadFbSources(currentNb);
+    showAlert('fbAlert', 'ok', 'تم رفع <b>' + up + '</b> تقرير، تخطّي <b>' + sk + '</b> (موجود)، وحذف <b>' + rm + '</b> مكرر.');
+  } else {
+    showAlert('fbAlert', 'err', r.body.error || ('HTTP ' + r.status));
+  }
+}
+
+async function dedupSources() {
+  if (!currentNb) return;
+  if (!confirm('حذف التكرارات؟ سيُحتفظ بالمصدر الأول فقط من كل عنوان مكرر.')) return;
+  const r = await getJSON('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources/dedup', { method: 'POST' });
+  loadSources();
+  if (r.ok && r.body.ok) {
+    const n = (r.body.removed || []).length;
+    let html = n ? 'تم حذف <b>' + n + '</b> مصدر مكرر.' : 'لا توجد تكرارات.';
+    const details = (r.body.removed || []).slice(0, 5).map(x => escapeHtml(x.title)).join('، ');
+    if (details) html += '<br><span class="small">' + details + '</span>';
+    showAlert('addAlert', n ? 'ok' : 'info', html);
+  } else {
+    showAlert('addAlert', 'err', r.body.error || ('HTTP ' + r.status));
+  }
+}
+
+$('nbSelect').onchange = () => { currentNb = $('nbSelect').value; loadSources(); loadFbSources(currentNb); };
+$('nbRefresh').onclick = loadNotebooks;
+$('fbRefresh').onclick = () => loadFbSources(currentNb || undefined);
+$('fbUploadMissing').onclick = uploadMissingReports;
+$('fbUploadAll').onclick = uploadAllReports;
+$('dedupBtn').onclick = dedupSources;
+
+$('newNbBtn').onclick = async () => {
+  const title = $('newNbTitle').value.trim();
+  if (!title) return;
+  const r = await getJSON('/api/nlm/notebooks', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
+  });
+  $('newNbTitle').value = '';
+  if (r.ok) { loadNotebooks(); renderAuth({ authenticated: true }); }
+  else showAlert('addAlert', 'err', r.body.error || 'تعذر الإنشاء');
+};
+
+$('loginBtn').onclick = async function () {
+  this.disabled = true;
+  showAlert('addAlert', '', '');
+  const r = await getJSON('/api/nlm/login', { method: 'POST' });
+  this.disabled = false;
+  if (r.ok && r.body.ok) {
+    showAlert('addAlert', 'info', r.body.message || 'تم فتح نافذة تسجيل الدخول.');
+  } else {
+    showAlert('addAlert', 'err', r.body.message || r.body.error || 'فشل تسجيل الدخول');
+  }
+  setTimeout(loadStatus, 4000);
+};
+
+$('sourceType').onchange = () => {
+  const v = $('sourceType').value;
+  $('filePane').classList.toggle('hide', v !== 'file');
+  $('urlPane').classList.toggle('hide', v !== 'url');
+  $('textPane').classList.toggle('hide', v !== 'text');
+};
+
+const dz = $('dropzone'), fi = $('fileInput');
+dz.onclick = () => fi.click();
+dz.ondragover = e => { e.preventDefault(); dz.classList.add('drag'); };
+dz.ondragleave = () => dz.classList.remove('drag');
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove('drag'); if (e.dataTransfer.files.length) fi.files = e.dataTransfer.files; };
+fi.onchange = () => { if (fi.files.length) dz.innerHTML = '<p><b>' + escapeHtml(fi.files[0].name) + '</b> تم الاختيار (' + (fi.files[0].size/1024).toFixed(1) + ' KB)</p>'; };
+
+$('addBtn').onclick = async function () {
+  if (!currentNb) { showAlert('addAlert', 'err', 'لم يُحدد دفتر'); return; }
+  const type = $('sourceType').value;
+  const fd = new FormData();
+  fd.append('type', type);
+  fd.append('wait', $('waitReady').checked ? '1' : '0');
+  if (type === 'file') {
+    if (!fi.files.length) { showAlert('addAlert', 'err', 'لم يتم اختيار ملف'); return; }
+    fd.append('file', fi.files[0]);
+  } else if (type === 'url') {
+    const url = $('urlInput').value.trim();
+    if (!url) { showAlert('addAlert', 'err', 'الرابط فارغ'); return; }
+    fd.append('url', url);
+  } else {
+    const text = $('textInput').value.trim();
+    if (!text) { showAlert('addAlert', 'err', 'النص فارغ'); return; }
+    fd.append('title', $('textTitle').value.trim() || 'نص ملصق');
+    fd.append('text', text);
+  }
+  this.disabled = true; this.textContent = 'جارٍ الرفع / المعالجة…';
+  showAlert('addAlert', '', '');
+  const started = Date.now();
+  const r = await fetch('/api/nlm/notebooks/' + encodeURIComponent(currentNb) + '/sources', { method: 'POST', body: fd });
+  const d = await r.json().catch(() => ({}));
+  this.disabled = false; this.textContent = '⬆ إضافة';
+  if (r.ok && d.ok) {
+    const s = d.source || {};
+    showAlert('addAlert', 'ok', 'تمت الإضافة: <b>' + escapeHtml(s.title) + '</b> · الحالة: <b>' + escapeHtml(s.status) + '</b> · ' + ((Date.now()-started)/1000).toFixed(1) + ' ثانية');
+    loadSources();
+  } else {
+    showAlert('addAlert', 'err', d.error || d.message || ('HTTP ' + r.status));
+  }
+};
+
+if (window.scTheme) scTheme.init();
+loadStatus();
+loadFbSources(currentNb || undefined);
+</script>
+</body>
+</html>

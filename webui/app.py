@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import sys
 from urllib.parse import urlsplit
 
@@ -11,8 +12,10 @@ from flask import Flask, jsonify, render_template, request, send_file, abort
 from scraper.config import DATA_DIR, SESSION_FILE
 from scraper.session import _session_has_login
 from webui.runner import get_runner
+from webui.notebooklm_api import notebooklm_api
 
 app = Flask(__name__)
+app.register_blueprint(notebooklm_api)
 
 
 def _safe_data_path(filename):
@@ -108,12 +111,28 @@ def _list_results():
     if not os.path.isdir(DATA_DIR):
         return []
     files = []
+    text_dir = os.path.join(DATA_DIR, "txt")
+    os.makedirs(text_dir, exist_ok=True)
     for name in sorted(os.listdir(DATA_DIR)):
-        if name.endswith(".json"):
-            path = os.path.join(DATA_DIR, name)
+        if name.lower().endswith(".json"):
+            path = _safe_data_path(name)
+            if not path or not os.path.isfile(path):
+                continue
+            text_path = os.path.join(text_dir, os.path.splitext(name)[0] + ".txt")
+            source_stat = os.stat(path)
+            try:
+                text_stat = os.stat(text_path)
+            except FileNotFoundError:
+                text_stat = None
+            if (
+                text_stat is None
+                or source_stat.st_size != text_stat.st_size
+                or source_stat.st_mtime_ns != text_stat.st_mtime_ns
+            ):
+                shutil.copy2(path, text_path)
             files.append({
                 "name": name,
-                "size": os.path.getsize(path),
+                "size": source_stat.st_size,
                 "url": "/api/result/" + name,
                 "view_url": "/view/" + name,
                 "rename_url": "/api/files/" + name,
@@ -122,9 +141,22 @@ def _list_results():
     return files
 
 
+_list_results()
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/upload")
+def notebooklm_upload():
+    return render_template("upload.html")
+
+
+@app.route("/chat")
+def notebooklm_chat():
+    return render_template("chat.html")
 
 
 @app.route("/api/status")
