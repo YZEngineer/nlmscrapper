@@ -2,12 +2,10 @@ import asyncio
 import logging
 import re
 import sys
+import subprocess
 import threading
 import tempfile
-import time
-from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from flask import Blueprint, current_app, jsonify, request
 from werkzeug.utils import secure_filename
@@ -30,7 +28,6 @@ _ALLOWED_UPLOAD_EXTENSIONS = {
     ".txt",
     ".xlsx",
 }
-_LOGIN_TIMEOUT_SECONDS = 900
 _LOGIN_LOCK = threading.Lock()
 _LOGIN_STATE = {"pending": False, "error": ""}
 _LOGGER = logging.getLogger(__name__)
@@ -80,123 +77,20 @@ def _source_details(source):
     }
 
 
-@contextmanager
-def _playwright_event_loop_policy():
-    if sys.platform != "win32":
-        yield
-        return
-
-    original_policy = asyncio.get_event_loop_policy()
-    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+def _watch_login_process(process, app):
     try:
-        yield
-    finally:
-        asyncio.set_event_loop_policy(original_policy)
-
-
-async def _validate_storage(path):
-    from notebooklm import NotebookLMClient
-
-    async with await NotebookLMClient.from_storage(path=str(path)) as client:
-        await client.notebooks.list()
-
-
-def _save_login_when_ready(app):
-    candidate_path = None
-    try:
-        from notebooklm.paths import get_browser_profile_dir, get_storage_path
-        from playwright.sync_api import sync_playwright
-
-        storage_path = get_storage_path()
-        browser_profile = get_browser_profile_dir()
-        storage_path.parent.mkdir(parents=True, exist_ok=True)
-        browser_profile.mkdir(parents=True, exist_ok=True)
-
-        with tempfile.NamedTemporaryFile(
-            prefix="notebooklm-auth-",
-            suffix=".json",
-            dir=storage_path.parent,
-            delete=False,
-        ) as candidate:
-            candidate_path = Path(candidate.name)
-
-        last_validation_error = None
-        deadline = time.monotonic() + _LOGIN_TIMEOUT_SECONDS
-        with _playwright_event_loop_policy():
-            with sync_playwright() as playwright:
-                context = playwright.chromium.launch_persistent_context(
-                    user_data_dir=str(browser_profile),
-                    headless=False,
-                    args=[
-                        "--disable-blink-features=AutomationControlled",
-                        "--password-store=basic",
-                    ],
-                    ignore_default_args=["--enable-automation"],
-                )
-                try:
-                    page = context.pages[0] if context.pages else context.new_page()
-                    page.goto("https://notebooklm.google.com", wait_until="domcontentloaded")
-                    while time.monotonic() < deadline:
-                        hostname = (urlsplit(page.url).hostname or "").lower()
-                        if hostname == "notebooklm.google.com":
-                            for url in (
-                                "https://accounts.google.com",
-                                "https://notebooklm.google.com",
-                            ):
-                                try:
-                                    page.goto(url, wait_until="commit")
-                                except Exception as error:
-                                    if not any(
-                                        marker in str(error).lower()
-                                        for marker in (
-                                            "navigation interrupted",
-                                            "interrupted by another navigation",
-                                        )
-                                    ):
-                                        raise
-                            context.storage_state(path=str(candidate_path))
-                            break
-                        page.wait_for_timeout(2000)
-                    else:
-                        raise TimeoutError(
-                            "NotebookLM login timed out before authentication completed."
-                        )
-                finally:
-                    context.close()
-
-        for _ in range(3):
-            original_policy = None
-            try:
-                if sys.platform == "win32":
-                    original_policy = asyncio.get_event_loop_policy()
-                    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-                asyncio.run(_validate_storage(candidate_path))
-            except Exception as error:
-                last_validation_error = error
-                time.sleep(2)
-            else:
-                candidate_path.replace(storage_path)
-                with _LOGIN_LOCK:
-                    _LOGIN_STATE.update(pending=False, error="")
-                _LOGGER.info("NotebookLM authentication saved to %s", storage_path)
-                return
-            finally:
-                if original_policy is not None:
-                    asyncio.set_event_loop_policy(original_policy)
-
-        raise RuntimeError(
-            f"NotebookLM authentication was not confirmed: {last_validation_error}"
-        )
+        return_code = process.wait()
+        if return_code:
+            raise RuntimeError(
+                f"NotebookLM login exited with code {return_code}. Check the login console."
+            )
+        with _LOGIN_LOCK:
+            _LOGIN_STATE.update(pending=False, error="")
+        _LOGGER.info("NotebookLM CLI login process completed.")
     except Exception as error:
         with _LOGIN_LOCK:
             _LOGIN_STATE.update(pending=False, error=str(error)[:500])
-        app.logger.exception("NotebookLM automatic login failed: %s", error)
-    finally:
-        if candidate_path and candidate_path.exists():
-            try:
-                candidate_path.unlink()
-            except OSError as error:
-                app.logger.warning("Could not remove temporary NotebookLM auth file: %s", error)
+        app.logger.exception("NotebookLM CLI login failed: %s", error)
 
 
 async def _list_notebooks():
@@ -214,7 +108,7 @@ def status():
         return jsonify({
             "authenticated": False,
             "pending": True,
-            "error": "Complete NotebookLM login in the browser. Authentication will be saved automatically.",
+            "error": "Complete Google sign-in in the NotebookLM login console, then press Enter there to save.",
         })
     if login_state["error"]:
         return jsonify({
@@ -237,18 +131,25 @@ def login():
             return jsonify({
                 "ok": True,
                 "pending": True,
-                "message": "NotebookLM login is already open. Authentication will be saved automatically.",
+                "message": "NotebookLM login is already open. Complete sign-in and press Enter in its console.",
             })
         _LOGIN_STATE.update(pending=True, error="")
 
     try:
+        creationflags = (
+            subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-m", "notebooklm", "login"],
+            creationflags=creationflags,
+        )
         threading.Thread(
-            target=_save_login_when_ready,
-            args=(current_app._get_current_object(),),
+            target=_watch_login_process,
+            args=(process, current_app._get_current_object()),
             daemon=True,
             name="notebooklm-login",
         ).start()
-    except RuntimeError as error:
+    except (OSError, RuntimeError) as error:
         with _LOGIN_LOCK:
             _LOGIN_STATE.update(pending=False, error=str(error)[:500])
         _log_error("login launch", error)
@@ -256,7 +157,7 @@ def login():
     return jsonify({
         "ok": True,
         "pending": True,
-        "message": "NotebookLM login opened in the browser. Authentication will be saved automatically after login.",
+        "message": "NotebookLM login opened in a separate console. Complete Google sign-in, then press Enter there to save.",
     })
 
 

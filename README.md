@@ -12,7 +12,7 @@ Web arayüzü `http://127.0.0.1:5000` adresinde açılır.
 
 ## NotebookLM
 
-Ana sayfadaki **NotebookLM Upload** ve **NotebookLM Chat** bağlantıları iki NotebookLM ekranını açar. İlk kullanımda giriş düğmesine bastıktan sonra açılan tarayıcı penceresinde NotebookLM oturumunu tamamlayın. Başarılı giriş algılanınca kimlik doğrulama durumu otomatik olarak kaydedilir; terminalde Enter veya y/n onayı gerekmez.
+Ana sayfadaki **NotebookLM Upload** ve **NotebookLM Chat** bağlantıları iki NotebookLM ekranını açar. İlk kullanımda giriş düğmesine bastıktan sonra ayrı konsolda açılan NotebookLM CLI komutunu takip edin. Tarayıcıda Google girişi tamamlandıktan sonra oturumu kaydetmek için bu konsola dönüp Enter'a basın.
 
 Upload ekranı NotebookLM defteri oluşturmayı, kaynakları listeleyip silmeyi ve dosya, URL veya metin kaynağı eklemeyi destekler. Yüklenen dosyalar NotebookLM'e aktarım sırasında geçici olarak saklanır. Chat ekranında bir defter seçip kaynaklarına soru sorabilirsiniz.
 
