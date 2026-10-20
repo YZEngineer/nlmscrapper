@@ -12,7 +12,7 @@ facebook_session.json
 
 # App data (created automatically on first run)
 data/
-
+temp/
 # Documentation (kept local)
 docs/
 
